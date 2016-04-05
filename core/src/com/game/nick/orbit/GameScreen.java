@@ -8,10 +8,13 @@ import java.util.Iterator;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input.Keys;
+import com.badlogic.gdx.InputMultiplexer;
+import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.input.GestureDetector;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
@@ -22,42 +25,66 @@ import com.badlogic.gdx.physics.box2d.Box2DDebugRenderer;
 import com.badlogic.gdx.physics.box2d.CircleShape;
 import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.FixtureDef;
+import com.badlogic.gdx.physics.box2d.Shape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.TimeUtils;
 
-public class GameScreen implements Screen {
+import sun.rmi.runtime.Log;
+
+public class GameScreen implements Screen, GestureDetector.GestureListener, InputProcessor {
     final GameActivity game;
 
-    final int SCREEN_WIDTH = 800, SCREEN_HEIGHT = 480;
+    int SCREEN_WIDTH, SCREEN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT;
 
     OrthographicCamera camera;
     World world;
     Box2DDebugRenderer debugRenderer;
     Body sun, planet, asteroid;
     ArrayList<Body> bodies;
+    boolean running, launching;
+    ArrayList<CircleShape> circles;
+
 
     public GameScreen(final GameActivity game) {
         this.game = game;
 
         debugRenderer = new Box2DDebugRenderer();
 
+        //get screen dimensions
+        SCREEN_WIDTH = Gdx.graphics.getWidth();
+        SCREEN_HEIGHT = Gdx.graphics.getHeight();
+
+        WORLD_HEIGHT = 720;
+        WORLD_WIDTH = (int)(WORLD_HEIGHT / (float)SCREEN_HEIGHT * SCREEN_WIDTH);
+
+
         // create the camera and the SpriteBatch
         camera = new OrthographicCamera();
-        camera.setToOrtho(false, SCREEN_WIDTH, SCREEN_HEIGHT);
+        camera.setToOrtho(false, WORLD_WIDTH, WORLD_HEIGHT);
 
         world = new World(new Vector2(0, 0), true);
 
         bodies = new ArrayList<Body>();
+        circles = new ArrayList<CircleShape>();
 
-        sun = createCircle(100, SCREEN_WIDTH/2, SCREEN_HEIGHT/2 );
+        sun = createCircle(1000, WORLD_WIDTH/2, WORLD_HEIGHT/2 );
         bodies.add(sun);
-        planet = createCircle(5, SCREEN_WIDTH*4/5f, SCREEN_HEIGHT/2 );
+        planet = createCircle(5, WORLD_WIDTH*4/5f, WORLD_HEIGHT/2 );
         bodies.add(planet);
-        asteroid = createCircle(1, SCREEN_WIDTH/2f, SCREEN_HEIGHT*9/10f);
+        asteroid = createCircle(1, WORLD_WIDTH/2f, WORLD_HEIGHT*9/10f);
         bodies.add(asteroid);
 
-        planet.setLinearVelocity(-300f, 220f);
+        launching = false;
+        running = false;
+
+        InputMultiplexer im = new InputMultiplexer();
+        GestureDetector gd = new GestureDetector(this);
+        im.addProcessor(gd);
+        im.addProcessor(this);
+
+        Gdx.input.setInputProcessor(im);
+
 
     }
 
@@ -74,6 +101,7 @@ public class GameScreen implements Screen {
 
         // Create a circle shape and set its radius to 6
         CircleShape circle = new CircleShape();
+        circles.add(circle);
         double radius = 5 * Math.log(Math.sqrt(mass) + 1);
         circle.setRadius((float)radius);
 
@@ -90,17 +118,10 @@ public class GameScreen implements Screen {
         return body;
     }
 
-    private float accumulator = 0;
 
     private void doPhysicsStep(float deltaTime) {
         // fixed time step
-        // max frame time to avoid spiral of death (on slow devices)
-        //float frameTime = Math.min(deltaTime, 0.25f);
-        //accumulator += frameTime;
-        //while (accumulator >= 1/60f) {
         world.step(deltaTime, 6, 2);
-            //accumulator -= 1/60f;
-        //}
     }
 
     public void applyGravityBetweenBodies(Body body1, Body body2) {
@@ -127,16 +148,21 @@ public class GameScreen implements Screen {
         // tell the camera to update its matrices.
         camera.update();
 
-        for(Body body1 : bodies) {
-            for(Body body2 : bodies) {
-                if(body1 != body2) {
-                    applyGravityBetweenBodies(body1, body2);
+        if(running) {
+            for (Body body1 : bodies) {
+                for (Body body2 : bodies) {
+                    if (body1 != body2) {
+                        applyGravityBetweenBodies(body1, body2);
+                    }
                 }
             }
         }
 
+        if(running)
+            Gdx.app.log("GameScreen", "planet linear v = (" + planet.getLinearVelocity().x + "," + planet.getLinearVelocity().y + ")");
+
         debugRenderer.render(world, camera.combined);
-        doPhysicsStep(1/90f);
+        doPhysicsStep(1 / 90f);
     }
 
     @Override
@@ -164,6 +190,179 @@ public class GameScreen implements Screen {
 
     @Override
     public void dispose() {
+        for(CircleShape circle : circles) {
+            circle.dispose();
+        }
+    }
+
+    @Override
+    public boolean keyDown (int keycode) {
+        Gdx.app.log("GameScreen", "keyDown registered - keycode = " + keycode);
+
+
+        return false;
+    }
+
+    @Override
+    public boolean keyUp (int keycode) {
+        Gdx.app.log("GameScreen", "keyUp registered - keycode = " + keycode);
+
+        return false;
+    }
+
+    @Override
+    public boolean keyTyped (char character) {
+        Gdx.app.log("GameScreen", "keyTyped registered - char = " + character);
+
+        return false;
+    }
+
+
+    @Override
+    public boolean touchDown (int x, int y, int pointer, int button) {
+        x = (int)(WORLD_WIDTH / (float)SCREEN_WIDTH * x); //convert screen x,y to world x,y
+        y = (int)(WORLD_HEIGHT / (float)SCREEN_HEIGHT * y);
+        y = WORLD_HEIGHT - y; //flip y axis because box2d is different than libgdx
+
+        Gdx.app.log("GameScreen", "touchDown registered at ("+x+","+y+")");
+
+
+        Vector2 touchLocation = new Vector2(x, y);
+        Vector2 planetCenter = planet.getWorldCenter();
+        float planetRadius = planet.getFixtureList().get(0).getShape().getRadius();
+        float touchDistanceFromPlanetCenter = Math.abs(planetCenter.dst(touchLocation));
+        boolean tapInsidePlanet = touchDistanceFromPlanetCenter < planetRadius || touchDistanceFromPlanetCenter < 50;
+        if(tapInsidePlanet && !launching) {
+            launching = true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean touchUp (int x, int y, int pointer, int button) {
+        x = (int)(WORLD_WIDTH / (float)SCREEN_WIDTH * x); //convert screen x,y to world x,y
+        y = (int)(WORLD_HEIGHT / (float)SCREEN_HEIGHT * y);
+        y = WORLD_HEIGHT - y; //flip y axis because box2d is different than libgdx
+
+        Gdx.app.log("GameScreen", "touchUp registered at (" + x + "," + y + ")");
+
+        if(launching) {
+            Vector2 releaseLocation = new Vector2(x, y);
+            Gdx.app.log("GameScreen", "launch release location = (" + x + "," + y + ")");
+            Vector2 tapLocation = planet.getWorldCenter();
+            Gdx.app.log("GameScreen", "planet center = (" + tapLocation.x + "," + tapLocation.y + ")");
+
+            Vector2 launchVector = releaseLocation.sub(tapLocation);
+            launchVector.scl(launchVector.len());
+            Gdx.app.log("GameScreen", "launchVector = (" + launchVector.x + "," + launchVector.y + ")");
+
+
+            planet.setLinearVelocity(launchVector.x, launchVector.y);
+            //planet.setLinearVelocity(-200, 200);
+            Gdx.app.log("GameScreen", "planet linear v = (" + planet.getLinearVelocity().x + "," + planet.getLinearVelocity().y + ")");
+
+            launching = false;
+            running = true;
+        }
+
+
+        return false;
+    }
+
+    @Override
+    public boolean touchDragged (int x, int y, int pointer) {
+        //Gdx.app.log("GameScreen", "touchDragged registered");
+
+        return false;
+    }
+
+    @Override
+    public boolean mouseMoved (int x, int y) {
+        //Gdx.app.log("GameScreen", "mouseMoved registered");
+
+        return false;
+    }
+
+    @Override
+    public boolean scrolled (int amount) {
+        Gdx.app.log("GameScreen", "scroll registered - amount = " +  amount);
+
+        return false;
+    }
+
+    @Override
+    public boolean touchDown (float x, float y, int pointer, int button) {
+        Gdx.app.log("GameScreen", "touchDown registered");
+        return false;
+    }
+
+    @Override
+    public boolean tap(float x, float y, int count, int button) {
+        Gdx.app.log("GameScreen", "tap registered");
+
+        return false;
+    }
+
+    @Override
+    public boolean longPress(float x, float y) {
+        Gdx.app.log("GameScreen", "longPress registered");
+        return false;
+    }
+
+    @Override
+    public boolean fling(float velocityX, float velocityY, int button) {
+        Gdx.app.log("GameScreen", "fling registered");
+
+        return false;
+    }
+
+    @Override
+    public boolean pan(float x, float y, float deltaX, float deltaY) {
+        Gdx.app.log("GameScreen", "pan registered");
+        return false;
+    }
+
+    @Override
+    public boolean panStop(float x, float y, int pointer, int button) {
+        Gdx.app.log("GameScreen", "panStop registered");
+        return false;
+    }
+
+    @Override
+    public boolean zoom (float originalDistance, float currentDistance){
+        Gdx.app.log("GameScreen", "zoom registered");
+        return false;
+    }
+
+    @Override
+    public boolean pinch (Vector2 initialFirstPointer, Vector2 initialSecondPointer, Vector2 firstPointer, Vector2 secondPointer){
+        Gdx.app.log("GameScreen", "pinch registered");
+
+        float initialDistance = Math.abs(initialFirstPointer.dst(initialSecondPointer));
+        float finalDistance = Math.abs(firstPointer.dst(secondPointer));
+
+        float adustmentFactor = finalDistance/initialDistance;
+
+        Fixture fixture = planet.getFixtureList().get(0);
+        Shape circle = fixture.getShape();
+        float mass = planet.getMass();
+
+        mass = adustmentFactor * mass;
+
+        double radius = 5 * Math.log(Math.sqrt(mass) + 1);
+
+        double density = mass / (Math.PI * Math.pow(radius, 2));
+
+
+        if(mass >= 1) {
+            fixture.setDensity((float) density);
+
+            circle.setRadius((float) radius);
+        }
+
+        planet.resetMassData();
+
+        return false;
     }
 
 }
