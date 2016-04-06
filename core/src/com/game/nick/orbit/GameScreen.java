@@ -34,6 +34,7 @@ import sun.rmi.runtime.Log;
 
 public class GameScreen implements Screen, GestureDetector.GestureListener, InputProcessor {
     final GameActivity game;
+    final float TIMESTEP = 1/60f;
 
     int SCREEN_WIDTH, SCREEN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT;
 
@@ -44,6 +45,8 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     ArrayList<Body> bodies;
     boolean running, launching;
     ArrayList<CircleShape> circles;
+    int selectedBody;
+
 
 
     public GameScreen(final GameActivity game) {
@@ -55,7 +58,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         SCREEN_WIDTH = Gdx.graphics.getWidth();
         SCREEN_HEIGHT = Gdx.graphics.getHeight();
 
-        WORLD_HEIGHT = 720;
+        WORLD_HEIGHT = 180;
         WORLD_WIDTH = (int)(WORLD_HEIGHT / (float)SCREEN_HEIGHT * SCREEN_WIDTH);
 
 
@@ -68,12 +71,14 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         bodies = new ArrayList<Body>();
         circles = new ArrayList<CircleShape>();
 
-        sun = createCircle(1000, WORLD_WIDTH/2, WORLD_HEIGHT/2 );
+        sun = createCircle(100, WORLD_WIDTH/2, WORLD_HEIGHT/2 );
         bodies.add(sun);
         planet = createCircle(5, WORLD_WIDTH*4/5f, WORLD_HEIGHT/2 );
         bodies.add(planet);
         asteroid = createCircle(1, WORLD_WIDTH/2f, WORLD_HEIGHT*9/10f);
         bodies.add(asteroid);
+
+        selectedBody = -1;
 
         launching = false;
         running = false;
@@ -102,7 +107,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         // Create a circle shape and set its radius to 6
         CircleShape circle = new CircleShape();
         circles.add(circle);
-        double radius = 5 * Math.log(Math.sqrt(mass) + 1);
+        double radius = 2 * Math.log(Math.sqrt(mass) + 1);
         circle.setRadius((float)radius);
 
         double density = mass / (Math.PI * Math.pow(radius, 2));
@@ -111,6 +116,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         FixtureDef fixtureDef = new FixtureDef();
         fixtureDef.shape = circle;
         fixtureDef.density = (float)density;
+        fixtureDef.friction = 0;
 
         // Create our fixture and attach it to the body
         body.createFixture(fixtureDef);
@@ -132,7 +138,6 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         Vector2 f = r.nor().scl((float) (m1 * m2 / Math.pow(r.len(), 2)));
 
         body2.applyForceToCenter(f.x, f.y, true);
-        //body1.applyForceToCenter(-f.x, -f.y, true);
 
     }
 
@@ -148,7 +153,10 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         // tell the camera to update its matrices.
         camera.update();
 
+
         if(running) {
+            Gdx.app.log("GameScreen", "planet linear v before forces = (" + planet.getLinearVelocity().x + "," + planet.getLinearVelocity().y + ")");
+
             for (Body body1 : bodies) {
                 for (Body body2 : bodies) {
                     if (body1 != body2) {
@@ -159,10 +167,10 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         }
 
         if(running)
-            Gdx.app.log("GameScreen", "planet linear v = (" + planet.getLinearVelocity().x + "," + planet.getLinearVelocity().y + ")");
+            Gdx.app.log("GameScreen", "planet linear v after forces= (" + planet.getLinearVelocity().x + "," + planet.getLinearVelocity().y + ")");
 
         debugRenderer.render(world, camera.combined);
-        doPhysicsStep(1 / 90f);
+        doPhysicsStep(TIMESTEP);
     }
 
     @Override
@@ -228,12 +236,24 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
 
         Vector2 touchLocation = new Vector2(x, y);
-        Vector2 planetCenter = planet.getWorldCenter();
-        float planetRadius = planet.getFixtureList().get(0).getShape().getRadius();
-        float touchDistanceFromPlanetCenter = Math.abs(planetCenter.dst(touchLocation));
-        boolean tapInsidePlanet = touchDistanceFromPlanetCenter < planetRadius || touchDistanceFromPlanetCenter < 50;
-        if(tapInsidePlanet && !launching) {
+
+        float shortestDistance = Integer.MAX_VALUE;
+        int tappedBody = -1;
+
+        for(int i = 0; i < bodies.size(); i++) {
+            Body body = bodies.get(i);
+            Vector2 bodyCenter = body.getWorldCenter();
+            float bodyRadius = body.getFixtureList().get(0).getShape().getRadius();
+            float touchDistanceFromBodyCenter = Math.abs(bodyCenter.dst(touchLocation));
+            boolean tapInsideBody = touchDistanceFromBodyCenter < bodyRadius || touchDistanceFromBodyCenter < 50;
+            if(tapInsideBody && touchDistanceFromBodyCenter < shortestDistance) {
+                tappedBody = i;
+                shortestDistance = touchDistanceFromBodyCenter;
+            }
+        }
+        if(tappedBody >= 0 && !launching) {
             launching = true;
+            selectedBody = tappedBody;
         }
         return false;
     }
@@ -247,19 +267,28 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         Gdx.app.log("GameScreen", "touchUp registered at (" + x + "," + y + ")");
 
         if(launching) {
+            Body body = bodies.get(selectedBody);
             Vector2 releaseLocation = new Vector2(x, y);
             Gdx.app.log("GameScreen", "launch release location = (" + x + "," + y + ")");
-            Vector2 tapLocation = planet.getWorldCenter();
-            Gdx.app.log("GameScreen", "planet center = (" + tapLocation.x + "," + tapLocation.y + ")");
+            Vector2 bodyLocation = body.getWorldCenter();
+            Gdx.app.log("GameScreen", "body center = (" + bodyLocation.x + "," + bodyLocation.y + ")");
 
-            Vector2 launchVector = releaseLocation.sub(tapLocation);
-            launchVector.scl(launchVector.len());
+            Vector2 launchVector = releaseLocation.sub(bodyLocation);
             Gdx.app.log("GameScreen", "launchVector = (" + launchVector.x + "," + launchVector.y + ")");
 
+            launchVector.scl(2);
 
-            planet.setLinearVelocity(launchVector.x, launchVector.y);
+            Vector2 currentVelocity = body.getLinearVelocity();
+
+            Vector2 changeInVelocity = launchVector.sub(currentVelocity);
+
+            Vector2 acceleration = changeInVelocity.scl(1 / TIMESTEP);
+
+            Vector2 forceToApply = acceleration.scl(body.getMass());
+
+            body.applyForceToCenter(forceToApply, true);
             //planet.setLinearVelocity(-200, 200);
-            Gdx.app.log("GameScreen", "planet linear v = (" + planet.getLinearVelocity().x + "," + planet.getLinearVelocity().y + ")");
+            Gdx.app.log("GameScreen", "body linear v = (" + body.getLinearVelocity().x + "," + body.getLinearVelocity().y + ")");
 
             launching = false;
             running = true;
@@ -349,7 +378,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
         mass = adustmentFactor * mass;
 
-        double radius = 5 * Math.log(Math.sqrt(mass) + 1);
+        double radius = 2 * Math.log(Math.sqrt(mass) + 1);
 
         double density = mass / (Math.PI * Math.pow(radius, 2));
 
