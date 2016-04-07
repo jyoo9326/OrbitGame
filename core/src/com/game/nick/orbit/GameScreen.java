@@ -35,6 +35,8 @@ import sun.rmi.runtime.Log;
 public class GameScreen implements Screen, GestureDetector.GestureListener, InputProcessor {
     final GameActivity game;
     final float TIMESTEP = 1/60f;
+    final float STANDARD_MASS = 5;
+    final float STANDARD_DENSITY = 1;
 
     int SCREEN_WIDTH, SCREEN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT;
 
@@ -73,7 +75,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
         sun = createCircle(100, WORLD_WIDTH/2, WORLD_HEIGHT/2 );
         bodies.add(sun);
-        planet = createCircle(5, WORLD_WIDTH*4/5f, WORLD_HEIGHT/2 );
+        planet = createCircle(STANDARD_MASS, WORLD_WIDTH*4/5f, WORLD_HEIGHT/2 );
         bodies.add(planet);
         asteroid = createCircle(1, WORLD_WIDTH/2f, WORLD_HEIGHT*9/10f);
         bodies.add(asteroid);
@@ -104,10 +106,10 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         // Create our body in the world using our body definition
         Body body = world.createBody(bodyDef);
 
-        // Create a circle shape and set its radius to 6
+        // Create a circle shape and set its radius
         CircleShape circle = new CircleShape();
         circles.add(circle);
-        double radius = 2 * Math.log(Math.sqrt(mass) + 1);
+        double radius = getCircleRadius(mass);
         circle.setRadius((float)radius);
 
         double density = mass / (Math.PI * Math.pow(radius, 2));
@@ -120,10 +122,41 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
         // Create our fixture and attach it to the body
         body.createFixture(fixtureDef);
+        body.setLinearDamping(0.1f);
+
 
         return body;
     }
 
+    private float getCircleRadius(float mass) {
+        //return (float)(Math.pow(mass, 2/5.0));
+        return (float)(Math.pow(3*mass/4/Math.PI/STANDARD_DENSITY, 1/3.0));
+    }
+
+    private void changeBodyMass(Body body, float deltaMass) {
+        Fixture fixture = body.getFixtureList().get(0);
+        Shape circle = fixture.getShape();
+        float mass = body.getMass();
+
+        mass = mass + deltaMass;
+
+        if (mass < 1) {
+            mass = 1;
+        } else if (mass > 1000000) {
+            mass = 1000000;
+        }
+
+        double radius = getCircleRadius(mass);
+
+        double density = mass / (Math.PI * Math.pow(radius, 2));
+
+
+        fixture.setDensity((float) density);
+        circle.setRadius((float) radius);
+
+
+        body.resetMassData();
+    }
 
     private void doPhysicsStep(float deltaTime) {
         // fixed time step
@@ -175,6 +208,14 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
     @Override
     public void resize(int width, int height) {
+        SCREEN_WIDTH = Gdx.graphics.getWidth();
+        SCREEN_HEIGHT = Gdx.graphics.getHeight();
+
+        WORLD_HEIGHT = 180;
+        WORLD_WIDTH = (int)(WORLD_HEIGHT / (float)SCREEN_HEIGHT * SCREEN_WIDTH);
+
+        camera.setToOrtho(false, WORLD_WIDTH, WORLD_HEIGHT);
+
     }
 
     @Override
@@ -284,6 +325,12 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
             Vector2 acceleration = changeInVelocity.scl(1 / TIMESTEP);
 
+            if(body.getMass() > STANDARD_MASS) {
+                // scale the acceleration so that bigger bodies have lower accelerations for the same pull
+                float scaleFactor = (float)(Math.pow(STANDARD_MASS/body.getMass(), 1/7.0));
+                acceleration = acceleration.scl(scaleFactor);
+            }
+
             Vector2 forceToApply = acceleration.scl(body.getMass());
 
             body.applyForceToCenter(forceToApply, true);
@@ -315,6 +362,13 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     @Override
     public boolean scrolled (int amount) {
         Gdx.app.log("GameScreen", "scroll registered - amount = " +  amount);
+
+        float scaled_amount = 10 * (float)Math.sqrt(planet.getMass()) * amount;
+
+        changeBodyMass(planet, scaled_amount);
+
+        Gdx.app.log("GameScreen", "Mass adjusted - mass = " + planet.getMass());
+
 
         return false;
     }
@@ -370,26 +424,11 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         float initialDistance = Math.abs(initialFirstPointer.dst(initialSecondPointer));
         float finalDistance = Math.abs(firstPointer.dst(secondPointer));
 
-        float adustmentFactor = finalDistance/initialDistance;
+        float changeInDistance = finalDistance - initialDistance;
 
-        Fixture fixture = planet.getFixtureList().get(0);
-        Shape circle = fixture.getShape();
-        float mass = planet.getMass();
+        changeBodyMass(planet, changeInDistance);
 
-        mass = adustmentFactor * mass;
-
-        double radius = 2 * Math.log(Math.sqrt(mass) + 1);
-
-        double density = mass / (Math.PI * Math.pow(radius, 2));
-
-
-        if(mass >= 1) {
-            fixture.setDensity((float) density);
-
-            circle.setRadius((float) radius);
-        }
-
-        planet.resetMassData();
+        launching = false; //make sure this scaling isn't registered as a launch
 
         return false;
     }
