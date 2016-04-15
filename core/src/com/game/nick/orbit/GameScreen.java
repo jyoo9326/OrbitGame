@@ -27,21 +27,21 @@ import com.badlogic.gdx.physics.box2d.World;
 public class GameScreen implements Screen, GestureDetector.GestureListener, InputProcessor {
     final GameActivity game;
     final float TIMESTEP = 1/60f;
-    final float STANDARD_MASS = 5;
-    final float STANDARD_DENSITY = 1;
+    final float STANDARD_MASS = 1000;
+    final float STANDARD_DENSITY = 1f;
+    final float GRAVITY_CONSTANT = 10f;
+    final float SIZE_ADJUSTMENT_FACTOR = 1/10f;
 
-    int SCREEN_WIDTH, SCREEN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT;
+    float SCREEN_WIDTH, SCREEN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT;
 
     OrthographicCamera camera;
     World world;
     Box2DDebugRenderer debugRenderer;
     Body sun, planet, asteroid;
     ArrayList<Body> bodies;
-    boolean running, launching;
+    boolean running, launching, pickingOrbit, chaseCamOn;
     ArrayList<CircleShape> circles;
     int selectedBody;
-
-    Vector2 camera_displacement;
 
 
 
@@ -53,16 +53,15 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         //get screen dimensions
         SCREEN_WIDTH = Gdx.graphics.getWidth();
         SCREEN_HEIGHT = Gdx.graphics.getHeight();
-        //define initial world dimensions for the camera. These can be adjusted later.
-        WORLD_HEIGHT = 180;
-        WORLD_WIDTH = (int)(WORLD_HEIGHT / (float)SCREEN_HEIGHT * SCREEN_WIDTH);
+        //define initial world dimensions for the camera. These can be adjusted later when a user zooms or resizes the window.
+        WORLD_HEIGHT = 90;
+        WORLD_WIDTH = WORLD_HEIGHT / SCREEN_HEIGHT * SCREEN_WIDTH;
 
 
         // create the camera
         camera = new OrthographicCamera();
         camera.setToOrtho(false, WORLD_WIDTH, WORLD_HEIGHT); //give camera initial world dimensions
-        //this displacement vector measures panning
-        camera_displacement = new Vector2(0,0);
+
         //create box2d world. Assign gravity 0 vector
         world = new World(new Vector2(0, 0), true);
         //define arraylists for bodies and circles. Bodies holds all of the planets, suns, and asteroids.
@@ -71,20 +70,20 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         circles = new ArrayList<CircleShape>();
 
         //create initial bodies
-        sun = createCircle(1000000, WORLD_WIDTH/2, WORLD_HEIGHT/2 );
+        sun = createCircle(100 * STANDARD_MASS, WORLD_WIDTH/2, WORLD_HEIGHT/2 );
         bodies.add(sun);
         sun.setLinearDamping(100000f);
-        planet = createCircle(STANDARD_MASS * 100000, sun.getWorldCenter().x + 2000, WORLD_HEIGHT/2 );
+        planet = createCircle(STANDARD_MASS, sun.getWorldCenter().x + 100, WORLD_HEIGHT/2 );
         bodies.add(planet);
-        asteroid = createCircle(STANDARD_MASS, planet.getWorldCenter().x + 100, WORLD_HEIGHT/2);
+        asteroid = createCircle(STANDARD_MASS / 100, planet.getWorldCenter().x + 20, WORLD_HEIGHT/2);
         bodies.add(asteroid);
 
         //make planet orbit sun and asteroid orbit planet
         orbit(planet, sun);
         orbit(asteroid, planet);
 
-        //no body is currently selected. This is used for launching and TODO scaling
-        selectedBody = -1;
+        //no body is currently selected. This is used for lots of functionality. e.g. launching and scaling
+        setSelectedBody(-1);
 
         //launching is false. This is true if the user is launching a planet
         launching = false;
@@ -100,6 +99,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         Gdx.input.setInputProcessor(im);
 
 
+
     }
 
     /**
@@ -107,13 +107,31 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      */
     private void handleZoom() {
         if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) {
-            //If the DOWN Key is pressed, zoom out .1 units
-            camera.zoom += .1;
+            //If the DOWN Key is pressed, zoom out
+            setZoom(getZoom() + 0.2f);
         }
         if (Gdx.input.isKeyPressed(Input.Keys.UP)) {
-            //If the UP Key is pressed, zoom in .1 units
-            camera.zoom -= .1;
+            //If the UP Key is pressed, zoom in
+            setZoom(getZoom() - 0.2f);
         }
+    }
+
+    /**
+     * This is a setter method for the zoom property of the camera
+     * @param zoom the zoom with 1 = normal. 2 = 2x zoom
+     */
+    private void setZoom(float zoom) {
+        camera.zoom = zoom;
+        WORLD_HEIGHT = camera.viewportHeight;
+        WORLD_WIDTH = camera.viewportWidth;
+    }
+
+    /**
+     * this is a getter method for the zoom property of the camera
+     * @return the zoom
+     */
+    private float getZoom() {
+        return camera.zoom;
     }
 
     /**
@@ -139,9 +157,35 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * This method centers the camera back on the main sun.
      */
     private void centerCamera() {
-        translateCamera(camera_displacement.scl(-1)); //reverse all displacement
-        camera_displacement.set(0,0); //set displacement to 0 vector
+        centerCamera(sun.getWorldCenter());
     }
+
+    /**
+     * This method centers camera on pos
+     * @param pos Vector2 position to center camera at
+     */
+    private void centerCamera(Vector2 pos) {
+        centerCamera(pos.x, pos.y);
+    }
+
+    /**
+     * This method centers camera on (x,y)
+     * @param x
+     * @param y
+     */
+    private void centerCamera(float x, float y) {
+        camera.position.x = x;
+        camera.position.y = y;
+    }
+
+    /**
+     * This method resets the camera back to the original position and zoom (centered on the main sun with zoom = 1)
+     */
+    private void resetCamera() {
+        centerCamera();
+        camera.zoom = 1;
+    }
+
 
     /**
      * Make body "planet" orbit body "sun". This method uses the planet's radius from the sun and the
@@ -152,10 +196,13 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      */
     private void orbit(Body planet, Body sun) {
         float sun_mass = sun.getMass();
-        float distance = sun.getWorldCenter().dst(planet.getWorldCenter());
-        float velocity_magnitude = (float)Math.sqrt(sun_mass / distance);
+        float distance = sun.getWorldCenter().dst(planet.getWorldCenter()) / SIZE_ADJUSTMENT_FACTOR;
+        //mv^2/r = G(m1)(m2)/r^2
+        float velocity_magnitude = (float)Math.sqrt(GRAVITY_CONSTANT * sun_mass / distance);
 
-        Vector2 r_hat = sun.getWorldCenter().sub(planet.getWorldCenter()).nor();
+        Vector2 r = sun.getWorldCenter().sub(planet.getWorldCenter());
+
+        Vector2 r_hat = r.nor();
 
         Vector2 v_hat = r_hat.rotate90(-1);
 
@@ -173,6 +220,9 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * @return The circular body
      */
     private Body createCircle(float mass, float x, float y) {
+
+        //mass = mass * SIZE_ADJUSTMENT_FACTOR;
+
         // First we create a body definition
         BodyDef bodyDef = new BodyDef();
         // We set our body to dynamic so it can experience forces, for something like ground which doesn't move we would set it to StaticBody
@@ -211,7 +261,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * @return the radius
      */
     private float getCircleRadius(float mass) {
-        return (float)(Math.pow(3*mass/4/Math.PI/STANDARD_DENSITY, 1/3.0));
+        return (float)(Math.pow(3*mass * SIZE_ADJUSTMENT_FACTOR/4/Math.PI/STANDARD_DENSITY, 1/3.0));// * SIZE_ADJUSTMENT_FACTOR);
     }
 
     /**
@@ -266,6 +316,33 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     }
 
     /**
+     * This method selects a body so that it can be launched, scaled in size, followed with the camera, or given an orbit
+     * @param bodyIndex the index corresponding to the body in the bodies arraylist
+     */
+    private void setSelectedBody(int bodyIndex) {
+        selectedBody = bodyIndex;
+        //TODO: Add graphics to support selecting body
+    }
+
+    /**
+     * This method returns a boolean saying whether any body is selected (true) or not (false)
+     * @return
+     */
+    private boolean isBodySelected() {
+        return selectedBody != -1;
+    }
+
+    /**
+     * This method sets the boolean pickingOrbit. This is true when the user has a selected body and they are in the process of
+     * selecting another body for that body to orbit
+     * @param bool
+     */
+    private void setPickingOrbit(boolean bool) {
+        pickingOrbit = bool;
+        //TODO: Add graphics to support picking orbit
+    }
+
+    /**
      * This method applies gravity the gravity from body1 to body2. It uses newton's law with G = 1.
      * @param body1
      * @param body2
@@ -276,13 +353,13 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         Vector2 r = body1.getWorldCenter().sub(body2.getWorldCenter());
 
         //get r magnitude. It is important to get this before getting r_hat because calling r.nor() will actually normalize the r vector, not just return r_hat
-        float r_mag = r.len();
+        float r_mag = r.len() / (float)Math.sqrt(SIZE_ADJUSTMENT_FACTOR);
 
         //get r unit vector
         Vector2 r_hat = r.nor();
 
         //F = G(m1)(m2) / ||r||^2 * r_hat
-        Vector2 f = r_hat.scl((float) (m1 * m2 / Math.pow(r_mag, 2)));
+        Vector2 f = r_hat.scl((float)(GRAVITY_CONSTANT * m1 * m2 / Math.pow(r_mag, 2)));
 
         //apply the force to body2
         body2.applyForceToCenter(f.x, f.y, true);
@@ -320,6 +397,10 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         //calling this method checks to see if the user is zooming. We want it to be a continuous zoom.
         handleZoom();
 
+        //make camera follow selected planet if chaseCamOn
+        if(isBodySelected() && chaseCamOn)
+            centerCamera(bodies.get(selectedBody).getWorldCenter());
+
         // tell the camera to update its matrices.
         camera.update();
 
@@ -337,6 +418,9 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
         debugRenderer.render(world, camera.combined);
 
+        //Gdx.app.log("GameScreen", "planet velocity = " + planet.getLinearVelocity().x + ", " + planet.getLinearVelocity().y);
+
+
         //advance world by TIMESTEP (1/60 second)
         doPhysicsStep(TIMESTEP);
     }
@@ -352,10 +436,10 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         SCREEN_WIDTH = Gdx.graphics.getWidth();
         SCREEN_HEIGHT = Gdx.graphics.getHeight();
 
-        WORLD_HEIGHT = 180;
-        WORLD_WIDTH = (int)(WORLD_HEIGHT / (float)SCREEN_HEIGHT * SCREEN_WIDTH);
+        WORLD_WIDTH = WORLD_HEIGHT / SCREEN_HEIGHT * SCREEN_WIDTH;
 
         camera.setToOrtho(false, WORLD_WIDTH, WORLD_HEIGHT);
+        centerCamera(); //put the sun at the middle
 
     }
 
@@ -399,13 +483,24 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         Gdx.app.log("GameScreen", "keyDown registered - keycode = " + keycode);
 
         if (keycode == Input.Keys.O) {
-            //If the O key is pressed, make planet orbit sun
-            orbit(planet, sun);
+            //If the O key is pressed and a body is selected, turn on orbit selection. Now the next body tapped will be orbited by the selected planet
+            if (isBodySelected()) {
+                if(!pickingOrbit) {
+                    setPickingOrbit(true);
+                } else {
+                    setPickingOrbit(false);
+                }
+            }
         }
 
         if (keycode == Input.Keys.C) {
-            //If the C key is pressed, center camera
-            centerCamera();
+            //If the C key is pressed, center camera and reset zoom
+            resetCamera();
+        }
+
+        if (keycode == Input.Keys.F) {
+            //If the F key is pressed, toggle camera following selected planet
+            chaseCamOn = !chaseCamOn;
         }
         return false;
     }
@@ -436,11 +531,11 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     @Override
     public boolean touchDown (int x, int y, int pointer, int button) {
 
-        Gdx.app.log("GameScreen", "touchDown registered at (" + x + "," + y + ")");
-
         Vector2 touchLocation = new Vector2(x, y);
 
         touchLocation = getWorldPosition(touchLocation); //adjust touch location to world coordinates
+
+        Gdx.app.log("GameScreen", "touchDown registered at (" + touchLocation.x + "," + touchLocation.y + ")");
 
         float shortestDistance = Integer.MAX_VALUE;
         int tappedBody = -1;
@@ -451,16 +546,15 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
             float bodyRadius = body.getFixtureList().get(0).getShape().getRadius();
             float touchDistanceFromBodyCenter = Math.abs(bodyCenter.dst(touchLocation)); //get touch distance from the center of the body
             //the tap is considered to be inside the body if it is within the radius or 50 world units
-            boolean tapInsideBody = touchDistanceFromBodyCenter < bodyRadius || touchDistanceFromBodyCenter < 50;
+            boolean tapInsideBody = touchDistanceFromBodyCenter < bodyRadius || touchDistanceFromBodyCenter < 10 * getZoom();
             if(tapInsideBody && touchDistanceFromBodyCenter < shortestDistance) { //we want to find the closest body to our tap in case multiple bodies are in range
                 tappedBody = i;
                 shortestDistance = touchDistanceFromBodyCenter;
             }
         }
         //if a body was tapped select the tapped body (this is the closest one to the tap)
-        if(tappedBody >= 0 && !launching) {
+        if(tappedBody >= 0 && !launching && selectedBody == tappedBody) {
             launching = true;
-            selectedBody = tappedBody;
         }
         return false;
     }
@@ -475,13 +569,14 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      */
     @Override
     public boolean touchUp (int x, int y, int pointer, int button) {
-        Gdx.app.log("GameScreen", "touchUp registered at (" + x + "," + y + ")");
 
         //if the user is currently launching a planet (their touch down was on a planet), launch the planet
-        if(launching) {
+        if(launching && isBodySelected()) {
             Body body = bodies.get(selectedBody);
             Vector2 releaseLocation = new Vector2(x, y);
             releaseLocation = getWorldPosition(releaseLocation); //convert release location to world coords
+
+            Gdx.app.log("GameScreen", "touchUp registered at (" + releaseLocation.x + "," + releaseLocation.y + ")");
 
             Gdx.app.log("GameScreen", "launch release location = (" + x + "," + y + ")");
             Vector2 bodyLocation = body.getWorldCenter();
@@ -490,7 +585,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
             Vector2 launchVector = releaseLocation.sub(bodyLocation); //create launch vector
             Gdx.app.log("GameScreen", "launchVector = (" + launchVector.x + "," + launchVector.y + ")");
 
-            launchVector.scl(-2); //double the magnitude of the launch vector and invert it so that the body launches away from the direction pulled. It's like pulling back a slingshot
+            launchVector.scl(-1); //invert it so that the body launches away from the direction pulled. It's like pulling back a slingshot
 
             if(body.getMass() > STANDARD_MASS) {
                 // scale the acceleration so that bigger bodies have lower accelerations for the same pull
@@ -533,11 +628,19 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         Gdx.app.log("GameScreen", "scroll registered - amount = " +  amount);
 
         //TODO scale mass of selected body
-        float scaled_amount = 10 * (float)Math.sqrt(planet.getMass()) * amount;
 
-        changeBodyMass(planet, scaled_amount);
+        if(isBodySelected()) {
 
-        Gdx.app.log("GameScreen", "Mass adjusted - mass = " + planet.getMass());
+            Body body = bodies.get(selectedBody);
+
+            float scaled_amount = 10 * (float) Math.sqrt(body.getMass()) * amount;
+
+            changeBodyMass(body, scaled_amount);
+
+            Gdx.app.log("GameScreen", "Mass adjusted - mass = " + body.getMass());
+        } else {
+            setZoom(getZoom() + amount * 0.1f);
+        }
 
 
         return false;
@@ -551,7 +654,56 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
     @Override
     public boolean tap(float x, float y, int count, int button) {
-        Gdx.app.log("GameScreen", "tap registered");
+
+        Vector2 touchLocation = new Vector2(x, y);
+
+        touchLocation = getWorldPosition(touchLocation); //adjust touch location to world coordinates
+
+        Gdx.app.log("GameScreen", "tap registered at (" + touchLocation.x + "," + touchLocation.y + ")");
+
+        float shortestDistance = Integer.MAX_VALUE;
+        int tappedBody = -1;
+        //check to see if any of the bodies were tapped.
+        for(int i = 0; i < bodies.size(); i++) {
+            Body body = bodies.get(i);
+            Vector2 bodyCenter = body.getWorldCenter();
+            float bodyRadius = body.getFixtureList().get(0).getShape().getRadius();
+            float touchDistanceFromBodyCenter = Math.abs(bodyCenter.dst(touchLocation)); //get touch distance from the center of the body
+            //the tap is considered to be inside the body if it is within the radius or 50 world units
+            boolean tapInsideBody = touchDistanceFromBodyCenter < bodyRadius || touchDistanceFromBodyCenter < 10 * getZoom();
+            if(tapInsideBody && touchDistanceFromBodyCenter < shortestDistance) { //we want to find the closest body to our tap in case multiple bodies are in range
+                tappedBody = i;
+                shortestDistance = touchDistanceFromBodyCenter;
+            }
+        }
+        //if a body was tapped, tappedBody is the index of the tapped body in the bodies arraylist
+        if(tappedBody >= 0) {
+            //if the user is selecting an orbit for the already selected planet
+            if(pickingOrbit) {
+                //if they didn't tap the body already selected
+                if(tappedBody != selectedBody) {
+                    //make that selected planet orbit the tapped body
+                    orbit(bodies.get(selectedBody), bodies.get(tappedBody));
+                }
+                // if they just picked an orbit or they tapped the planet already selected, turn off orbit selecting
+                setPickingOrbit(false);
+            } else {
+                //if they aren't selecting an orbit, make the tapped body the new globally selected body
+                setSelectedBody(tappedBody);
+            }
+        } else {
+            //if they didn't select a planet
+            if(pickingOrbit) {
+                //if picking orbit, stop picking orbit but keep the current planet selected
+                setPickingOrbit(false);
+            } else {
+                //otherwise, deselect the planet. The player can now zoom and pan around
+                setSelectedBody(-1);
+            }
+
+        }
+
+
 
         return false;
     }
@@ -590,8 +742,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
             //create pan vector
             Vector2 delta = pos.sub(pos0).scl(-1);
-            camera_displacement.add(delta); //pan camera
-            translateCamera(delta);
+            translateCamera(delta); // pan camera
         }
         return false;
     }
