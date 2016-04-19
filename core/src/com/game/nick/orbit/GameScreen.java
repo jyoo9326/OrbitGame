@@ -39,7 +39,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     Box2DDebugRenderer debugRenderer;
     Body sun, planet, asteroid;
     ArrayList<Body> bodies;
-    boolean running, launching, pickingOrbit, chaseCamOn;
+    boolean running, launching, pickingOrbit, chaseCamOn, addingBody, addingBodyMatrix;
     ArrayList<CircleShape> circles;
     int selectedBody;
 
@@ -187,6 +187,38 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     }
 
 
+    /**
+     * this method creates a new body and adds it to the bodies arraylist
+     * @param mass
+     * @param x x position
+     * @param y y position
+     * @return the new body
+     */
+    private Body createBody(float mass, float x, float y) {
+        Body body = createCircle(mass, x, y);
+        bodies.add(body);
+        return body;
+    }
+
+    /**
+     * This method creates an nxn matrix of bodies. All have mass "mass". The top-leftmost is located at (x,y)
+     * @param mass
+     * @param x
+     * @param y
+     * @param n
+     * @return an arraylist with all the bodies in the matrix
+     */
+    private ArrayList<Body> createBodyMatrix(float mass, float x, float y, float n) {
+        float radius = getCircleRadius(mass);
+        ArrayList<Body> matrixBodies = new ArrayList<Body>();
+        for(int i = 0; i < n; i++) {
+            for(int j = 0; j < n; j++) {
+                Body newBody = createBody(mass, x + radius * 2*i, y + radius * 2*j);
+                matrixBodies.add(newBody);
+            }
+        }
+        return matrixBodies;
+    }
     /**
      * Make body "planet" orbit body "sun". This method uses the planet's radius from the sun and the
      * sun's mass to calculate what tangential velocity the planet needs to have to orbit the sun. It
@@ -394,6 +426,8 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         Gdx.gl.glClearColor(0, 0, 0.2f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
+
+
         //calling this method checks to see if the user is zooming. We want it to be a continuous zoom.
         handleZoom();
 
@@ -418,7 +452,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
         debugRenderer.render(world, camera.combined);
 
-        //Gdx.app.log("GameScreen", "planet velocity = " + planet.getLinearVelocity().x + ", " + planet.getLinearVelocity().y);
+        Gdx.app.log("GameScreen", "delta = " + delta);
 
 
         //advance world by TIMESTEP (1/60 second)
@@ -501,6 +535,18 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         if (keycode == Input.Keys.F) {
             //If the F key is pressed, toggle camera following selected planet
             chaseCamOn = !chaseCamOn;
+        }
+
+        if (keycode == Input.Keys.N) {
+            //If the N key is pressed, toggle adding new bodies
+            addingBody = !addingBody;
+            setSelectedBody(-1);
+        }
+
+        if (keycode == Input.Keys.M) {
+            //If the M key is pressed, toggle adding matrices of bodies
+            addingBodyMatrix = !addingBodyMatrix;
+            setSelectedBody(-1);
         }
         return false;
     }
@@ -696,6 +742,14 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
             if(pickingOrbit) {
                 //if picking orbit, stop picking orbit but keep the current planet selected
                 setPickingOrbit(false);
+            } else if(addingBody) {
+                //add new body at the tap location with STANDARD_MASS
+                createBody(STANDARD_MASS, touchLocation.x, touchLocation.y);
+                setSelectedBody(bodies.size() - 1); //select the new body
+            } else if(addingBodyMatrix) {
+                //add new body at the tap location with STANDARD_MASS
+                createBodyMatrix(STANDARD_MASS, touchLocation.x, touchLocation.y, 5);
+                setSelectedBody(-1); //select no body
             } else {
                 //otherwise, deselect the planet. The player can now zoom and pan around
                 setSelectedBody(-1);
