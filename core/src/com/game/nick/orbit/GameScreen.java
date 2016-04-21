@@ -12,6 +12,8 @@ import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.input.GestureDetector;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.math.Vector3;
@@ -32,7 +34,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     final float GRAVITY_CONSTANT = 10f;
     final float SIZE_ADJUSTMENT_FACTOR = 1/10f;
 
-    float SCREEN_WIDTH, SCREEN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT;
+    float screenWidth, screenHeight, worldWidth, worldHeight;
 
     OrthographicCamera camera;
     World world;
@@ -43,24 +45,29 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     ArrayList<CircleShape> circles;
     int selectedBody;
 
+    SpriteBatch batch;
+    Texture earth;
+    ArrayList<DynamicSprite> sprites;
+
 
 
     public GameScreen(final GameActivity game) {
         this.game = game;
 
+        //debug renderer is used for box2d debugging. shows shape outlines around bodies
         debugRenderer = new Box2DDebugRenderer();
 
         //get screen dimensions
-        SCREEN_WIDTH = Gdx.graphics.getWidth();
-        SCREEN_HEIGHT = Gdx.graphics.getHeight();
+        screenWidth = Gdx.graphics.getWidth();
+        screenHeight = Gdx.graphics.getHeight();
         //define initial world dimensions for the camera. These can be adjusted later when a user zooms or resizes the window.
-        WORLD_HEIGHT = 90;
-        WORLD_WIDTH = WORLD_HEIGHT / SCREEN_HEIGHT * SCREEN_WIDTH;
+        worldHeight = 90;
+        worldWidth = worldHeight / screenHeight * screenWidth;
 
 
         // create the camera
         camera = new OrthographicCamera();
-        camera.setToOrtho(false, WORLD_WIDTH, WORLD_HEIGHT); //give camera initial world dimensions
+        camera.setToOrtho(false, worldWidth, worldHeight); //give camera initial world dimensions
 
         //create box2d world. Assign gravity 0 vector
         world = new World(new Vector2(0, 0), true);
@@ -69,13 +76,18 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         //circles holds all of the circleshape objects we create that will later need to be disposed of
         circles = new ArrayList<CircleShape>();
 
+        batch = new SpriteBatch();
+        // We need a sprite since it's going to move
+        earth = new Texture("gfx/earth-cartoon-md.png");
+        sprites = new ArrayList<DynamicSprite>();
+
         //create initial bodies
-        sun = createCircle(100 * STANDARD_MASS, WORLD_WIDTH/2, WORLD_HEIGHT/2 );
+        sun = createCircle(100 * STANDARD_MASS, worldWidth /2, worldHeight /2 );
         bodies.add(sun);
         sun.setLinearDamping(100000f);
-        planet = createCircle(STANDARD_MASS, sun.getWorldCenter().x + 100, WORLD_HEIGHT/2 );
+        planet = createCircle(STANDARD_MASS, sun.getWorldCenter().x + 100, worldHeight /2 );
         bodies.add(planet);
-        asteroid = createCircle(STANDARD_MASS / 100, planet.getWorldCenter().x + 20, WORLD_HEIGHT/2);
+        asteroid = createCircle(STANDARD_MASS / 100, planet.getWorldCenter().x + 20, worldHeight /2);
         bodies.add(asteroid);
 
         //make planet orbit sun and asteroid orbit planet
@@ -99,11 +111,11 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         Gdx.input.setInputProcessor(im);
 
 
-
     }
 
     /**
-     * This method is called every frame to check for zooming. This way zoom can be continuous. TODO: set this to pinch when no planet is selected
+     * This method is called every frame to check for zooming. This way zoom can be continuous.
+     * TODO: set this to pinch when no planet is selected
      */
     private void handleZoom() {
         if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) {
@@ -122,8 +134,8 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      */
     private void setZoom(float zoom) {
         camera.zoom = zoom;
-        WORLD_HEIGHT = camera.viewportHeight;
-        WORLD_WIDTH = camera.viewportWidth;
+        worldHeight = camera.viewportHeight;
+        worldWidth = camera.viewportWidth;
     }
 
     /**
@@ -271,6 +283,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         double radius = getCircleRadius(mass); //get the circle's radius based on mass. This function uses a mass-volume conversion
         circle.setRadius((float)radius);
 
+
         // Use the mass to calculate density based on radius
         double density = mass / (Math.PI * Math.pow(radius, 2));
 
@@ -278,10 +291,18 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         FixtureDef fixtureDef = new FixtureDef();
         fixtureDef.shape = circle;
         fixtureDef.density = (float)density;
-        fixtureDef.friction = 0; //there's no friction in space
+        fixtureDef.friction = 5; //coefficient of friction on the body's surface
 
         // Create our fixture and attach it to the body
         body.createFixture(fixtureDef);
+
+        DynamicSprite sprite = new DynamicSprite(earth);
+        sprite.attachBody(body);
+        sprite.setPosition(body.getPosition().x, body.getPosition().y);
+        sprites.add(sprite);
+
+
+        body.setUserData(sprite);
 
 
         return body;
@@ -406,11 +427,26 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * @param screenPosition
      * @return
      */
-    private Vector2 getWorldPosition(Vector2 screenPosition) {
+    public Vector2 getWorldPosition(Vector2 screenPosition) {
         Vector3 pos = new Vector3(screenPosition, 0);
         camera.unproject(pos);
         Vector2 worldPosition = new Vector2(pos.x, pos.y);
         return worldPosition;
+    }
+
+    public Vector2 getScreenPosition(Vector2 worldPosition) {
+        Vector3 pos = new Vector3(worldPosition, 0);
+        camera.project(pos);
+        Vector2 screenPosition = new Vector2(pos.x, pos.y);
+        return screenPosition;
+    }
+
+    public float scaleDistanceToWorld(float distance) {
+        return distance * camera.viewportHeight / screenHeight;
+    }
+
+    public float scaleDistanceToScreen(float distance) {
+        return distance * screenHeight / camera.viewportHeight*(1/getZoom());
     }
 
     /**
@@ -450,9 +486,16 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
             }
         }
 
-        debugRenderer.render(world, camera.combined);
+        //debugRenderer.render(world, camera.combined);
 
         Gdx.app.log("GameScreen", "delta = " + delta);
+
+        batch.begin();
+        for(DynamicSprite sprite : sprites) {
+            sprite.update(this);
+            sprite.draw(batch);
+        }
+        batch.end();
 
 
         //advance world by TIMESTEP (1/60 second)
@@ -467,12 +510,12 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      */
     @Override
     public void resize(int width, int height) {
-        SCREEN_WIDTH = Gdx.graphics.getWidth();
-        SCREEN_HEIGHT = Gdx.graphics.getHeight();
+        screenWidth = Gdx.graphics.getWidth();
+        screenHeight = Gdx.graphics.getHeight();
 
-        WORLD_WIDTH = WORLD_HEIGHT / SCREEN_HEIGHT * SCREEN_WIDTH;
+        worldWidth = worldHeight / screenHeight * screenWidth;
 
-        camera.setToOrtho(false, WORLD_WIDTH, WORLD_HEIGHT);
+        camera.setToOrtho(false, worldWidth, worldHeight);
         centerCamera(); //put the sun at the middle
 
     }
@@ -502,9 +545,11 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     @Override
     public void dispose() {
         //dispose of circle shapes
-        for(CircleShape circle : circles) {
+        for (CircleShape circle : circles) {
             circle.dispose();
         }
+
+        earth.dispose();
     }
 
     /**
