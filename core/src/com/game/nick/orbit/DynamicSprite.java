@@ -14,30 +14,60 @@ import com.badlogic.gdx.physics.box2d.Shape;
 public class DynamicSprite extends Sprite {
     Body physicsBody;
 
+    /**
+     * The dynamic sprite class is an extension to the sprite class that includes a box2d body
+     * @param texture
+     */
     public DynamicSprite(Texture texture) {
         super(texture);
     }
 
+    /**
+     * This method can be called to attach a body to the sprite
+     * @param body
+     */
     public void attachBody(Body body) {
         this.physicsBody = body;
     }
 
+    /**
+     * This method returns the physics body attached to the sprite
+     * @return
+     */
     public Body getBody() {
         return physicsBody;
     }
 
+    /**
+     * This method returns the nth fixture attached to the sprite's body. A fixture stores most of the properties of the body
+     * @param n
+     * @return
+     */
     public Fixture getFixture(int n) {
         return physicsBody.getFixtureList().get(n); //bodies can have multiple fixtures so the get() method returns a list. We want the fixture at index n.
     }
 
+    /**
+     * This method returns the default fixture (0)
+     * @return
+     */
     public Fixture getFixture() {
         return getFixture(0);
     }
 
+    /**
+     * This method returns the shape object attached to the body. This is used for handling collisions.
+     * @return
+     */
     public Shape getShape() {
         return getFixture().getShape();
     }
 
+    /**
+     * This update method must be called in the render loop in the running screen class. It updates the sprite
+     * to match the properties of the body
+     * @param screen The screen that the body/sprite show up in
+     */
     public void update(GameScreen screen) {
         Vector2 position = screen.getScreenPosition(getBody().getWorldCenter());
         float radius = screen.scaleDistanceToScreen(getShape().getRadius());
@@ -49,6 +79,11 @@ public class DynamicSprite extends Sprite {
 
     }
 
+    /**
+     * This method is used to set the center of a sprite at a given (x,y) coordinates
+     * @param x
+     * @param y
+     */
     public void setPositionCenter(float x, float y) {
         float width = getWidth();
         float height = getHeight();

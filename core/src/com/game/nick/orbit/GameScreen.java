@@ -33,6 +33,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     final float STANDARD_DENSITY = 1f;
     final float GRAVITY_CONSTANT = 10f;
     final float SIZE_ADJUSTMENT_FACTOR = 1/10f;
+    final int BODY_MATRIX_N = 5;
 
     float screenWidth, screenHeight, worldWidth, worldHeight;
 
@@ -71,9 +72,9 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
         //create box2d world. Assign gravity 0 vector
         world = new World(new Vector2(0, 0), true);
-        //define arraylists for bodies and circles. Bodies holds all of the planets, suns, and asteroids.
+        //define array lists for bodies and circles. Bodies holds all of the planets, suns, and asteroids.
         bodies = new ArrayList<Body>();
-        //circles holds all of the circleshape objects we create that will later need to be disposed of
+        //circles holds all of the circle shape objects we create that will later need to be disposed of
         circles = new ArrayList<CircleShape>();
 
         batch = new SpriteBatch();
@@ -296,12 +297,13 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         // Create our fixture and attach it to the body
         body.createFixture(fixtureDef);
 
-        DynamicSprite sprite = new DynamicSprite(earth);
+        //Now we create a sprite (graphic) for the body
+        DynamicSprite sprite = new DynamicSprite(earth); //the dynamic sprite class is optimized for use with bodies
         sprite.attachBody(body);
         sprite.setPosition(body.getPosition().x, body.getPosition().y);
         sprites.add(sprite);
 
-
+        //attach the sprite to the body so it can be identified later
         body.setUserData(sprite);
 
 
@@ -369,13 +371,41 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     }
 
     /**
-     * This method selects a body so that it can be launched, scaled in size, followed with the camera, or given an orbit
-     * @param bodyIndex the index corresponding to the body in the bodies arraylist
+     * This method selects a body so that it can be launched, scaled in size, followed with the camera, or given an orbit.
+     * @param bodyIndex the index corresponding to the body in the bodies arraylist. -1 = no body selected
      */
     private void setSelectedBody(int bodyIndex) {
         selectedBody = bodyIndex;
         //TODO: Add graphics to support selecting body
     }
+
+    /**
+     * This method sets the launching bool
+     * @param bool
+     */
+    private void setLaunching(boolean bool) {
+        launching = bool;
+        //TODO Add visual
+    }
+
+    /**
+     * Sets the addingBody bool. When true, users can click to add bodies.
+     * @param bool
+     */
+    private void setAddingBody(boolean bool) {
+        addingBody = bool;
+        //TODO Add visual
+    }
+
+    /**
+     * Sets the addingBodyMatrix bool. When true, users can click to add matrices of bodies.
+     * @param bool
+     */
+    private void setAddingBodyMatrix(boolean bool) {
+        addingBodyMatrix = bool;
+        //TODO Add visual
+    }
+
 
     /**
      * This method returns a boolean saying whether any body is selected (true) or not (false)
@@ -434,6 +464,13 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         return worldPosition;
     }
 
+    /**
+     * This method performs the opposite of getWorldPosition(Vector2 screenPosition). It takes a
+     * screen position as input and returns the world position. This is used to place sprites in the
+     * correct location in the world (sprites are placed using screen coordinates).
+     * @param worldPosition
+     * @return
+     */
     public Vector2 getScreenPosition(Vector2 worldPosition) {
         Vector3 pos = new Vector3(worldPosition, 0);
         camera.project(pos);
@@ -441,12 +478,24 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         return screenPosition;
     }
 
+    /**
+     * This method scales a given screen distance to the world distance. The screen (measured in pixels)
+     * has a different scale than the box2d world (meters)
+     * @param distance
+     * @return
+     */
     public float scaleDistanceToWorld(float distance) {
-        return distance * camera.viewportHeight / screenHeight;
+        return distance * camera.viewportHeight*(1/getZoom() / screenHeight);
     }
 
+    /**
+     * This method scales a given world distance to the screen distance. The screen (measured in pixels)
+     * has a different scale than the box2d world (meters)
+     * @param distance
+     * @return
+     */
     public float scaleDistanceToScreen(float distance) {
-        return distance * screenHeight / camera.viewportHeight*(1/getZoom());
+        return distance * screenHeight / camera.viewportHeight*(1/getZoom()); //zoom needs to be accounted for
     }
 
     /**
@@ -584,13 +633,15 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
         if (keycode == Input.Keys.N) {
             //If the N key is pressed, toggle adding new bodies
-            addingBody = !addingBody;
+            setAddingBody(!addingBody);
+            setAddingBodyMatrix(false);
             setSelectedBody(-1);
         }
 
         if (keycode == Input.Keys.M) {
             //If the M key is pressed, toggle adding matrices of bodies
-            addingBodyMatrix = !addingBodyMatrix;
+            setAddingBodyMatrix(!addingBodyMatrix);
+            setAddingBody(false);
             setSelectedBody(-1);
         }
         return false;
@@ -645,7 +696,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         }
         //if a body was tapped select the tapped body (this is the closest one to the tap)
         if(tappedBody >= 0 && !launching && selectedBody == tappedBody) {
-            launching = true;
+            setLaunching(true);
         }
         return false;
     }
@@ -687,7 +738,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
             //assign launch vector as new velocity for the body
             body.setLinearVelocity(launchVector);
 
-            launching = false;
+            setLaunching(false);
             running = true;
         }
 
@@ -793,7 +844,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
                 setSelectedBody(bodies.size() - 1); //select the new body
             } else if(addingBodyMatrix) {
                 //add new body at the tap location with STANDARD_MASS
-                createBodyMatrix(STANDARD_MASS, touchLocation.x, touchLocation.y, 5);
+                createBodyMatrix(STANDARD_MASS, touchLocation.x, touchLocation.y, BODY_MATRIX_N);
                 setSelectedBody(-1); //select no body
             } else {
                 //otherwise, deselect the planet. The player can now zoom and pan around
@@ -870,7 +921,8 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     public boolean pinch (Vector2 initialFirstPointer, Vector2 initialSecondPointer, Vector2 firstPointer, Vector2 secondPointer){
         Gdx.app.log("GameScreen", "pinch registered");
 
-        //TODO: let user scale SELECTED planet size by pinching. If no planet selected, zoom
+        //TODO: Fix this up BIG TIME
+
         float initialDistance = Math.abs(initialFirstPointer.dst(initialSecondPointer));
         float finalDistance = Math.abs(firstPointer.dst(secondPointer));
 
@@ -878,7 +930,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
         changeBodyMass(planet, changeInDistance);
 
-        launching = false; //make sure this scaling isn't registered as a launch
+        setLaunching(false); //make sure this scaling isn't registered as a launch
 
         return false;
     }
