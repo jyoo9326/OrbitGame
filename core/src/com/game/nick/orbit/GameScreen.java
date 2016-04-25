@@ -25,6 +25,9 @@ import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.FixtureDef;
 import com.badlogic.gdx.physics.box2d.Shape;
 import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.utils.viewport.ExtendViewport;
+import com.badlogic.gdx.utils.viewport.ScreenViewport;
 
 public class GameScreen implements Screen, GestureDetector.GestureListener, InputProcessor {
     final GameActivity game;
@@ -35,7 +38,11 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     final float SIZE_ADJUSTMENT_FACTOR = 1/10f;
     final int BODY_MATRIX_N = 5;
 
-    float screenWidth, screenHeight, worldWidth, worldHeight;
+    float screenWidth, screenHeight, worldWidth, worldHeight, hudHeight, hudWidth;
+
+    Integer test;
+
+    float timeStep;
 
     OrthographicCamera camera;
     World world;
@@ -45,8 +52,10 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     boolean running, launching, pickingOrbit, chaseCamOn, addingBody, addingBodyMatrix;
     ArrayList<CircleShape> circles;
     int selectedBody;
+    HUD hud;
+    ExtendViewport hudViewport;
 
-    SpriteBatch batch;
+    SpriteBatch batch, hudBatch;
     Texture earth;
     ArrayList<DynamicSprite> sprites;
 
@@ -103,15 +112,39 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         //running is true
         running = true;
 
+        //create separate sprite batch for HUD
+        hudBatch = new SpriteBatch();
+
+        hudHeight = 300;
+        hudWidth = hudHeight*screenWidth/screenHeight;
+
+        OrthographicCamera hudCam = new OrthographicCamera(hudWidth, hudHeight);
+        hudViewport = new ExtendViewport(hudWidth, hudHeight, hudCam);
+
+        hud = new HUD(this, hudViewport);
+
+
         //create stuff to measure input (taps, keys, mouse clicks, etc)
         InputMultiplexer im = new InputMultiplexer();
         GestureDetector gd = new GestureDetector(this);
+        im.addProcessor(hud);
         im.addProcessor(gd);
         im.addProcessor(this);
 
         Gdx.input.setInputProcessor(im);
 
+        timeStep = TIMESTEP;
 
+    }
+
+    public void pauseGame() {
+        running = false;
+        timeStep = 0;
+    }
+
+    public void unpauseGame() {
+        running = true;
+        timeStep = TIMESTEP;
     }
 
     /**
@@ -169,7 +202,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     /**
      * This method centers the camera back on the main sun.
      */
-    private void centerCamera() {
+    public void centerCamera() {
         centerCamera(sun.getWorldCenter());
     }
 
@@ -177,7 +210,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * This method centers camera on pos
      * @param pos Vector2 position to center camera at
      */
-    private void centerCamera(Vector2 pos) {
+    public void centerCamera(Vector2 pos) {
         centerCamera(pos.x, pos.y);
     }
 
@@ -186,7 +219,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * @param x
      * @param y
      */
-    private void centerCamera(float x, float y) {
+    public void centerCamera(float x, float y) {
         camera.position.x = x;
         camera.position.y = y;
     }
@@ -512,7 +545,6 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
 
-
         //calling this method checks to see if the user is zooming. We want it to be a continuous zoom.
         handleZoom();
 
@@ -537,18 +569,23 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
         //debugRenderer.render(world, camera.combined);
 
-        Gdx.app.log("GameScreen", "delta = " + delta);
+        //Gdx.app.log("GameScreen", "delta = " + delta);
 
+        //update all the sprites
         batch.begin();
+        batch.setProjectionMatrix(camera.combined);
         for(DynamicSprite sprite : sprites) {
-            sprite.update(this);
+            sprite.update();
             sprite.draw(batch);
         }
         batch.end();
 
 
         //advance world by TIMESTEP (1/60 second)
-        doPhysicsStep(TIMESTEP);
+        doPhysicsStep(timeStep);
+
+        hud.act(TIMESTEP);
+        hud.draw();
     }
 
     /**
@@ -566,6 +603,14 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
         camera.setToOrtho(false, worldWidth, worldHeight);
         centerCamera(); //put the sun at the middle
+
+        //float hudHeight = 300;
+        //float hudWidth = hudHeight*screenWidth/screenHeight;
+
+        hud.getViewport().update(width, height, true);
+
+
+
 
     }
 
@@ -643,6 +688,15 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
             setAddingBodyMatrix(!addingBodyMatrix);
             setAddingBody(false);
             setSelectedBody(-1);
+        }
+
+        if (keycode == Input.Keys.P) {
+            //If the P key is pressed, toggle playing/pausing of game
+            if(running) {
+                pauseGame();
+            } else {
+                unpauseGame();
+            }
         }
         return false;
     }
@@ -826,6 +880,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
                 if(tappedBody != selectedBody) {
                     //make that selected planet orbit the tapped body
                     orbit(bodies.get(selectedBody), bodies.get(tappedBody));
+
                 }
                 // if they just picked an orbit or they tapped the planet already selected, turn off orbit selecting
                 setPickingOrbit(false);

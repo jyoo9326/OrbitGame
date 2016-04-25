@@ -66,16 +66,14 @@ public class DynamicSprite extends Sprite {
     /**
      * This update method must be called in the render loop in the running screen class. It updates the sprite
      * to match the properties of the body
-     * @param screen The screen that the body/sprite show up in
      */
-    public void update(GameScreen screen) {
-        Vector2 position = screen.getScreenPosition(getBody().getWorldCenter());
-        float radius = screen.scaleDistanceToScreen(getShape().getRadius());
+    public void update() {
+        Vector2 position = getBody().getWorldCenter();
+        float radius = getShape().getRadius();
         setSize(radius * 2, radius * 2);
         setPositionCenter(position.x, position.y);
         setOrigin(getWidth() / 2, getHeight() / 2);
         setRotation((float)Math.toDegrees(physicsBody.getAngle()));
-
 
     }
 
