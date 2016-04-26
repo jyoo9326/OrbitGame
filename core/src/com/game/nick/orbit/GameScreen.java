@@ -112,12 +112,11 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         //running is true
         running = true;
 
-        //create separate sprite batch for HUD
-        hudBatch = new SpriteBatch();
-
+        //Create HUD
         hudHeight = 300;
         hudWidth = hudHeight*screenWidth/screenHeight;
 
+        //Create viewport/camera for HUD to maintain same aspect ratio on resize
         OrthographicCamera hudCam = new OrthographicCamera(hudWidth, hudHeight);
         hudViewport = new ExtendViewport(hudWidth, hudHeight, hudCam);
 
@@ -137,11 +136,17 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
     }
 
+    /**
+     * This method pauses the game by setting timestep = 0
+     */
     public void pauseGame() {
         running = false;
         timeStep = 0;
     }
 
+    /**
+     * This method unpauses the game by changing the timestep back to TIMESTEP
+     */
     public void unpauseGame() {
         running = true;
         timeStep = TIMESTEP;
@@ -407,7 +412,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * This method selects a body so that it can be launched, scaled in size, followed with the camera, or given an orbit.
      * @param bodyIndex the index corresponding to the body in the bodies arraylist. -1 = no body selected
      */
-    private void setSelectedBody(int bodyIndex) {
+    public void setSelectedBody(int bodyIndex) {
         selectedBody = bodyIndex;
         //TODO: Add graphics to support selecting body
     }
@@ -425,7 +430,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * Sets the addingBody bool. When true, users can click to add bodies.
      * @param bool
      */
-    private void setAddingBody(boolean bool) {
+    public void setAddingBody(boolean bool) {
         addingBody = bool;
         //TODO Add visual
     }
@@ -434,7 +439,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * Sets the addingBodyMatrix bool. When true, users can click to add matrices of bodies.
      * @param bool
      */
-    private void setAddingBodyMatrix(boolean bool) {
+    public void setAddingBodyMatrix(boolean bool) {
         addingBodyMatrix = bool;
         //TODO Add visual
     }
@@ -444,7 +449,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * This method returns a boolean saying whether any body is selected (true) or not (false)
      * @return
      */
-    private boolean isBodySelected() {
+    public boolean isBodySelected() {
         return selectedBody != -1;
     }
 
@@ -453,7 +458,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * selecting another body for that body to orbit
      * @param bool
      */
-    private void setPickingOrbit(boolean bool) {
+    public void setPickingOrbit(boolean bool) {
         pickingOrbit = bool;
         //TODO: Add graphics to support picking orbit
     }
@@ -584,6 +589,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         //advance world by TIMESTEP (1/60 second)
         doPhysicsStep(timeStep);
 
+        //update HUD
         hud.act(TIMESTEP);
         hud.draw();
     }
@@ -604,9 +610,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         camera.setToOrtho(false, worldWidth, worldHeight);
         centerCamera(); //put the sun at the middle
 
-        //float hudHeight = 300;
-        //float hudWidth = hudHeight*screenWidth/screenHeight;
-
+        //resize hud
         hud.getViewport().update(width, height, true);
 
 
@@ -793,7 +797,6 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
             body.setLinearVelocity(launchVector);
 
             setLaunching(false);
-            running = true;
         }
 
 
