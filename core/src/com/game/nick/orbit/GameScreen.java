@@ -25,9 +25,7 @@ import com.badlogic.gdx.physics.box2d.Fixture;
 import com.badlogic.gdx.physics.box2d.FixtureDef;
 import com.badlogic.gdx.physics.box2d.Shape;
 import com.badlogic.gdx.physics.box2d.World;
-import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
-import com.badlogic.gdx.utils.viewport.ScreenViewport;
 
 public class GameScreen implements Screen, GestureDetector.GestureListener, InputProcessor {
     final GameActivity game;
@@ -37,10 +35,10 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     final float GRAVITY_CONSTANT = 10f;
     final float SIZE_ADJUSTMENT_FACTOR = 1/10f;
     final int BODY_MATRIX_N = 5;
+    final float MIN_BODY_MASS = 1;
+    final float MAX_BODY_MASS = 1000000;
 
     float screenWidth, screenHeight, worldWidth, worldHeight, hudHeight, hudWidth;
-
-    Integer test;
 
     float timeStep;
 
@@ -55,9 +53,11 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
     HUD hud;
     ExtendViewport hudViewport;
 
-    SpriteBatch batch, hudBatch;
-    Texture earth;
+    SpriteBatch batch;
+    Texture earth, bodyHighlight;
     ArrayList<DynamicSprite> sprites;
+
+    LaunchSimulation launchSimulation;
 
 
 
@@ -89,6 +89,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         batch = new SpriteBatch();
         // We need a sprite since it's going to move
         earth = new Texture("gfx/earth-cartoon-md.png");
+        bodyHighlight = new Texture("gfx/body_highlight.png");
         sprites = new ArrayList<DynamicSprite>();
 
         //create initial bodies
@@ -104,9 +105,6 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         orbit(planet, sun);
         orbit(asteroid, planet);
 
-        //no body is currently selected. This is used for lots of functionality. e.g. launching and scaling
-        setSelectedBody(-1);
-
         //launching is false. This is true if the user is launching a planet
         launching = false;
         //running is true
@@ -120,8 +118,11 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         OrthographicCamera hudCam = new OrthographicCamera(hudWidth, hudHeight);
         hudViewport = new ExtendViewport(hudWidth, hudHeight, hudCam);
 
+        //create the hud
         hud = new HUD(this, hudViewport);
 
+        //create the launch simulator
+        launchSimulation = new LaunchSimulation(this, new ExtendViewport(100, 100, camera));
 
         //create stuff to measure input (taps, keys, mouse clicks, etc)
         InputMultiplexer im = new InputMultiplexer();
@@ -133,6 +134,8 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         Gdx.input.setInputProcessor(im);
 
         timeStep = TIMESTEP;
+        //no body is currently selected. This is used for lots of functionality. e.g. launching and scaling
+        setSelectedBody(-1);
 
     }
 
@@ -181,7 +184,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * this is a getter method for the zoom property of the camera
      * @return the zoom
      */
-    private float getZoom() {
+    public float getZoom() {
         return camera.zoom;
     }
 
@@ -337,13 +340,13 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
 
         //Now we create a sprite (graphic) for the body
         DynamicSprite sprite = new DynamicSprite(earth); //the dynamic sprite class is optimized for use with bodies
-        sprite.attachBody(body);
+        sprite.attachBody(body); //attach the body to the sprite object for updating
+        sprite.createHighlight(bodyHighlight); //create the selection highlight
         sprite.setPosition(body.getPosition().x, body.getPosition().y);
         sprites.add(sprite);
 
         //attach the sprite to the body so it can be identified later
         body.setUserData(sprite);
-
 
         return body;
     }
@@ -353,8 +356,17 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * @param mass
      * @return the radius
      */
-    private float getCircleRadius(float mass) {
+    public float getCircleRadius(float mass) {
         return (float)(Math.pow(3*mass * SIZE_ADJUSTMENT_FACTOR/4/Math.PI/STANDARD_DENSITY, 1/3.0));// * SIZE_ADJUSTMENT_FACTOR);
+    }
+
+    /**
+     * This method calculates a circle's (sphere's) mass given a radius
+     * @param radius
+     * @return the mass
+     */
+    public float getCircleMass(float radius) {
+        return (float)(4.0/3*Math.PI*Math.pow(radius, 3)*STANDARD_DENSITY/SIZE_ADJUSTMENT_FACTOR);
     }
 
     /**
@@ -362,7 +374,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * @param body The body whom's mass to change
      * @param deltaMass The amount to change it by
      */
-    private void changeBodyMass(Body body, float deltaMass) {
+    public void changeBodyMass(Body body, float deltaMass) {
         //get the fixture and shape of the body
         Fixture fixture = body.getFixtureList().get(0); //bodies can have multiple fixtures so the get() method returns a list. We want the fixture at index 0.
         Shape circle = fixture.getShape();
@@ -371,11 +383,24 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         mass = mass + deltaMass; //adjust mass
 
         //mass has a lower limit of 1 and an upper limit of 1,000,000 inclusive
-        if (mass < 1) {
-            mass = 1;
-        } else if (mass > 1000000) {
-            mass = 1000000;
+        if (mass < MIN_BODY_MASS) {
+            mass = MIN_BODY_MASS;
+        } else if (mass > MAX_BODY_MASS) {
+            mass = MAX_BODY_MASS;
         }
+
+        setBodyMass(body, mass);
+
+    }
+
+    /**
+     * This method sets the mass for a given body. It also scales the radius accordingly
+     * @param body
+     * @param mass
+     */
+    public void setBodyMass(Body body, float mass) {
+        Fixture fixture = body.getFixtureList().get(0); //bodies can have multiple fixtures so the get() method returns a list. We want the fixture at index 0.
+        Shape circle = fixture.getShape();
 
         //recalculate radius and density based on new mass
         double radius = getCircleRadius(mass);
@@ -406,6 +431,8 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
             world.step(TIMESTEP, 6, 2);
             accumulator -= TIMESTEP;
         }
+        //world.step(deltaTime, 6, 2);
+
     }
 
     /**
@@ -413,8 +440,35 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      * @param bodyIndex the index corresponding to the body in the bodies arraylist. -1 = no body selected
      */
     public void setSelectedBody(int bodyIndex) {
+        if(selectedBody >= 0)
+            sprites.get(selectedBody).setSelected(false);
+
         selectedBody = bodyIndex;
+
+        if(selectedBody >= 0) {
+            float mass = getSelectedBody().getMass();
+            float radius = getCircleRadius(mass);
+            hud.scaleSlider.setDisabled(false);
+            hud.scaleSlider.setValue(radius);
+            sprites.get(selectedBody).setSelected(true);
+        } else {
+            hud.scaleSlider.setDisabled(true);
+
+        }
         //TODO: Add graphics to support selecting body
+    }
+
+    /**
+     * This method returns the selected body
+     * @return
+     */
+    public Body getSelectedBody() {
+        try {
+            return bodies.get(selectedBody);
+        } catch (IndexOutOfBoundsException ex) {
+            ex.printStackTrace();
+            return null;
+        }
     }
 
     /**
@@ -423,6 +477,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
      */
     private void setLaunching(boolean bool) {
         launching = bool;
+        launchSimulation.stopSimulation();
         //TODO Add visual
     }
 
@@ -553,6 +608,10 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         //calling this method checks to see if the user is zooming. We want it to be a continuous zoom.
         handleZoom();
 
+
+        OrthographicCamera cam;
+        cam = new OrthographicCamera();
+
         //make camera follow selected planet if chaseCamOn
         if(isBodySelected() && chaseCamOn)
             centerCamera(bodies.get(selectedBody).getWorldCenter());
@@ -582,6 +641,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         for(DynamicSprite sprite : sprites) {
             sprite.update();
             sprite.draw(batch);
+            sprite.highlight.draw(batch);
         }
         batch.end();
 
@@ -589,10 +649,15 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         //advance world by TIMESTEP (1/60 second)
         doPhysicsStep(timeStep);
 
+
         //update HUD
         hud.act(TIMESTEP);
         hud.draw();
+
+        //update launch simulation
+        launchSimulation.draw();
     }
+
 
     /**
      * This method is called when a user resizes the game on their computer. It adjusts the world dimensions
@@ -648,6 +713,8 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         }
 
         earth.dispose();
+        bodyHighlight.dispose();
+        hud.skin.dispose();
     }
 
     /**
@@ -951,6 +1018,27 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
             //create pan vector
             Vector2 delta = pos.sub(pos0).scl(-1);
             translateCamera(delta); // pan camera
+        } else { //if a body is being launched, create a simulation for the launch and the body's movement
+            Body body = bodies.get(selectedBody);
+            Vector2 releaseLocation = new Vector2(x, y);
+            releaseLocation = getWorldPosition(releaseLocation); //convert release location to world coords
+
+            Vector2 bodyLocation = body.getWorldCenter();
+
+            Vector2 launchVector = releaseLocation.sub(bodyLocation); //create launch vector
+
+            Gdx.app.log("GameScreen", "launchVector = (" + launchVector.x + "," + launchVector.y + ")");
+
+            launchVector.scl(-1); //invert it so that the body launches away from the direction pulled. It's like pulling back a slingshot
+
+            if(body.getMass() > STANDARD_MASS) {
+                // scale the acceleration so that bigger bodies have lower accelerations for the same pull
+                float scaleFactor = (float)(Math.pow(STANDARD_MASS/body.getMass(), 1/7.0));
+                launchVector = launchVector.scl(scaleFactor);
+            }
+
+            //Simulate the launch for the body using the launch vector as it's new velocity.
+            launchSimulation.doSimulation(body, launchVector);
         }
         return false;
     }

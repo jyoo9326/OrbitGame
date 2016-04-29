@@ -13,6 +13,10 @@ import com.badlogic.gdx.physics.box2d.Shape;
  */
 public class DynamicSprite extends Sprite {
     Body physicsBody;
+    boolean selected;
+    BodyHighlight highlight;
+    public enum Type {BODY, HIGHLIGHT}
+    Type type;
 
     /**
      * The dynamic sprite class is an extension to the sprite class that includes a box2d body
@@ -20,8 +24,18 @@ public class DynamicSprite extends Sprite {
      */
     public DynamicSprite(Texture texture) {
         super(texture);
+        this.type = Type.BODY;
     }
 
+    public void createHighlight(Texture texture) {
+        highlight = new BodyHighlight(texture);
+        highlight.showHighlight(false);
+        highlight.attachBody(physicsBody);
+    }
+
+    public void setSelected(boolean bool) {
+        selected = bool;
+    }
     /**
      * This method can be called to attach a body to the sprite
      * @param body
@@ -74,6 +88,13 @@ public class DynamicSprite extends Sprite {
         setPositionCenter(position.x, position.y);
         setOrigin(getWidth() / 2, getHeight() / 2);
         setRotation((float)Math.toDegrees(physicsBody.getAngle()));
+
+        if (selected) {
+            highlight.showHighlight(true);
+            highlight.update();
+        } else {
+            highlight.showHighlight(false);
+        }
 
     }
 

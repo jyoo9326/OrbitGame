@@ -1,19 +1,24 @@
 package com.game.nick.orbit;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.InputListener;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.actions.Actions;
+import com.badlogic.gdx.scenes.scene2d.ui.Skin;
+import com.badlogic.gdx.scenes.scene2d.ui.Slider;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
+import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
 /**
  * Created by Nick on 4/23/2016.
  */
 public class HUD extends Stage {
-
+    static final String UI_FILE = "skin/uiskin.json";
     final float MENU_ANIMATION_TIME = 0.1f;
 
     public enum SubMenu {
@@ -23,12 +28,13 @@ public class HUD extends Stage {
     SubMenu subMenuOpen;
 
     public enum ClickFunction {
-        NONE, ADD_SINGLE, ADD_MULTIPLE, ORBIT
+        NONE, ADD_SINGLE, ADD_MULTIPLE, ORBIT, SCALE
     }
 
     ClickFunction currentClickFunction;
 
-
+    Slider scaleSlider;
+    Skin skin;
 
     TextButton //main menu buttons
             menuButton,
@@ -60,11 +66,12 @@ public class HUD extends Stage {
     TextButton.TextButtonStyle textButtonStyle;
     BitmapFont font;
     GameScreen gameScreen;
-    Table mainTable, addTable, editTable, viewTable, settingsTable;
+    Table mainTable, addTable, editTable, viewTable, settingsTable, scaleSliderTable;
 
     boolean menuOpen;
 
-    float menuDisplacement, submenuYDisplacement, editDisplacement, addDisplacement, viewDisplacement, settingsDisplacement;
+    float menuDisplacement, submenuYDisplacement, editDisplacement, addDisplacement, viewDisplacement, settingsDisplacement,
+            scaleSliderYDisplacement, scaleSliderXDisplacement;
 
     public HUD(final GameScreen gameScreen, Viewport viewport) {
         super(viewport);
@@ -74,6 +81,8 @@ public class HUD extends Stage {
         font = new BitmapFont(); //default font
         textButtonStyle = new TextButton.TextButtonStyle(); //create style for buttons
         textButtonStyle.font = font; //assign style the font
+
+        skin = new Skin(Gdx.files.internal(UI_FILE));
 
         //MAIN MENU
 
@@ -148,6 +157,7 @@ public class HUD extends Stage {
         //EDIT SUB MENU
 
         scaleButton = new TextButton("Scale", textButtonStyle);
+        createScaleButtonFunctionality();
         velocityButton = new TextButton("Velocity", textButtonStyle);
         orbitButton = new TextButton("Orbit", textButtonStyle);
         stickyButton = new TextButton("Sticky", textButtonStyle);
@@ -234,6 +244,32 @@ public class HUD extends Stage {
 
 
 
+        //BODY SCALE SLIDER
+        float maxRadius = gameScreen.getCircleRadius(gameScreen.MAX_BODY_MASS);
+        float minRadius = gameScreen.getCircleRadius(gameScreen.MIN_BODY_MASS);
+
+        scaleSlider = new Slider(minRadius, maxRadius, 0.01f, false, skin);
+        createScaleSliderFunctionality();
+        scaleSlider.setDebug(true);
+
+        scaleSlider.setDisabled(true);
+
+        scaleSliderTable = new Table();
+        scaleSliderTable.setDebug(true);
+
+        //y displacement for slider is equal to the height of the main menu and sub menus
+        scaleSliderYDisplacement = submenuYDisplacement + addTable.getCells().get(0).getActor().getHeight();
+
+        scaleSliderTable.add(scaleSlider);
+
+        scaleSliderTable.setFillParent(true);
+        scaleSliderTable.right().bottom();
+        addActor(scaleSliderTable);
+
+        scaleSliderXDisplacement = scaleSlider.getWidth();
+
+        scaleSliderTable.setPosition(scaleSliderXDisplacement, scaleSliderYDisplacement);
+
         subMenuOpen = SubMenu.NONE;
         currentClickFunction = ClickFunction.NONE;
     }
@@ -269,6 +305,7 @@ public class HUD extends Stage {
         } else {
             closeSubMenu(subMenuOpen);
             openSubMenu(menu);
+            deactivateClickFunction(currentClickFunction);
         }
 
     }
@@ -355,6 +392,16 @@ public class HUD extends Stage {
             case ORBIT:
                 gameScreen.setPickingOrbit(true);
                 break;
+            case SCALE:
+                scaleSliderTable.setPosition(0, scaleSliderYDisplacement);
+                if (gameScreen.isBodySelected()) {
+                    float mass = gameScreen.getSelectedBody().getMass();
+                    float radius = gameScreen.getCircleRadius(mass);
+                    scaleSlider.setValue(radius);
+                }
+
+                break;
+
         }
     }
 
@@ -373,6 +420,9 @@ public class HUD extends Stage {
                 break;
             case ORBIT:
                 gameScreen.setPickingOrbit(false);
+                break;
+            case SCALE:
+                scaleSliderTable.setPosition(scaleSliderXDisplacement, scaleSliderYDisplacement);
                 break;
         }
     }
@@ -493,6 +543,42 @@ public class HUD extends Stage {
             public void touchUp(InputEvent event, float x, float y, int pointer, int button) {
                 clickFunction(ClickFunction.ADD_MULTIPLE);
             }
+        });
+    }
+
+
+    private void createScaleButtonFunctionality() {
+        scaleButton.addListener(new InputListener() {
+            public boolean touchDown(InputEvent event, float x, float y, int pointer, int button) {
+
+                return true;
+            }
+
+            public void touchUp(InputEvent event, float x, float y, int pointer, int button) {
+                clickFunction(ClickFunction.SCALE);
+            }
+        });
+    }
+
+
+    private void createScaleSliderFunctionality() {
+        scaleSlider.addListener(new ChangeListener()
+        {
+
+            @Override
+            public void changed(ChangeEvent event, Actor actor)
+            {
+                if(gameScreen.isBodySelected()) {
+                    Slider slider = (Slider) actor;
+
+                    float radius = slider.getValue();
+
+                    float mass = gameScreen.getCircleMass(radius);
+
+                    gameScreen.setBodyMass(gameScreen.getSelectedBody(), mass);
+                }
+            }
+
         });
     }
 }
