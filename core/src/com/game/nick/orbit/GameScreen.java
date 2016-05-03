@@ -27,6 +27,7 @@ import com.badlogic.gdx.physics.box2d.Shape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 
+
 public class GameScreen implements Screen, GestureDetector.GestureListener, InputProcessor {
     final GameActivity game;
     final float TIMESTEP = 1/60f;
@@ -111,7 +112,7 @@ public class GameScreen implements Screen, GestureDetector.GestureListener, Inpu
         running = true;
 
         //Create HUD
-        hudHeight = 300;
+        hudHeight = 1500;
         hudWidth = hudHeight*screenWidth/screenHeight;
 
         //Create viewport/camera for HUD to maintain same aspect ratio on resize

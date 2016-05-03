@@ -2,17 +2,21 @@ package com.game.nick.orbit;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.InputListener;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.actions.Actions;
+import com.badlogic.gdx.scenes.scene2d.ui.ImageButton;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Slider;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.utils.viewport.Viewport;
+
+import java.util.ArrayList;
 
 /**
  * Created by Nick on 4/23/2016.
@@ -34,10 +38,12 @@ public class HUD extends Stage {
     ClickFunction currentClickFunction;
 
     Slider scaleSlider;
-    Skin skin;
+    Skin skin, skin2;
 
-    TextButton //main menu buttons
-            menuButton,
+    ImageButton //main menu buttons
+            menuButton;
+
+    TextButton
             editButton,
             viewButton,
             addButton,
@@ -63,7 +69,8 @@ public class HUD extends Stage {
             helpButton,
             appInfoButton;
 
-    TextButton.TextButtonStyle textButtonStyle;
+    ArrayList<TextButton.TextButtonStyle> textButtonStyles;
+    ImageButton.ImageButtonStyle imageButtonStyle;
     BitmapFont font;
     GameScreen gameScreen;
     Table mainTable, addTable, editTable, viewTable, settingsTable, scaleSliderTable;
@@ -77,24 +84,52 @@ public class HUD extends Stage {
         super(viewport);
 
         this.gameScreen = gameScreen; //the game screen that this HUD will be used for
+        Gdx.input.setInputProcessor(this);
+        TextureAtlas atlas = new TextureAtlas("UI/Buttons.pack");
 
         font = new BitmapFont(); //default font
-        textButtonStyle = new TextButton.TextButtonStyle(); //create style for buttons
-        textButtonStyle.font = font; //assign style the font
 
         skin = new Skin(Gdx.files.internal(UI_FILE));
-
+        skin2 = new Skin(atlas);
+        Table table = new Table(skin2);
+        table.setBounds(0,0,Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+       // TextureAtlas buttonAtlas = new TextureAtlas(Gdx.files.internal("skin/Buttons.pack"));
         //MAIN MENU
+        //skin.addRegions(buttonAtlas);
 
-        menuButton = new TextButton("Menu", textButtonStyle);
+        textButtonStyles = new ArrayList<TextButton.TextButtonStyle>();
+
+        textButtonStyles.add(new TextButton.TextButtonStyle()); //create style for buttons
+        textButtonStyles.get(textButtonStyles.size()-1).font = font; //assign style the font
+        textButtonStyles.get(textButtonStyles.size()-1).up = skin2.getDrawable("button.menuw");
+
+        imageButtonStyle = new ImageButton.ImageButtonStyle();
+        imageButtonStyle.up = skin2.getDrawable("button.menuw");
+        //textButtonStyles.setBounds(x, y, 128, 128);
+        menuButton = new ImageButton(imageButtonStyle);
+        table.add(menuButton);
+        table.getCell(menuButton);
         createMenuButtonFunctionality();
-        addButton = new TextButton("Add", textButtonStyle);
+
+
+        //this.addActor(menuButton);
+
+        textButtonStyles.add(new TextButton.TextButtonStyle()); //create style for buttons
+        textButtonStyles.get(textButtonStyles.size()-1).font = font; //assign style the font
+        textButtonStyles.get(textButtonStyles.size()-1).up = skin2.getDrawable("button.add");
+
+        addButton = new TextButton("Add", textButtonStyles.get(textButtonStyles.size()-1));
+
+        table.add(addButton);
         createAddButtonFunctionality();
-        editButton = new TextButton("Edit", textButtonStyle);
+
+        //this.addAction(addButton);
+
+        editButton = new TextButton("Edit", textButtonStyles.get(textButtonStyles.size()-1));
         createEditButtonFunctionality();
-        viewButton = new TextButton("View", textButtonStyle);
+        viewButton = new TextButton("View", textButtonStyles.get(textButtonStyles.size()-1));
         createViewButtonFunctionality();
-        settingsButton = new TextButton("Settings", textButtonStyle);
+        settingsButton = new TextButton("Settings", textButtonStyles.get(textButtonStyles.size()-1));
         createSettingsButtonFunctionality();
 
         mainTable = new Table();  //create a table to hold all of the buttons for the main menu
@@ -127,9 +162,9 @@ public class HUD extends Stage {
 
         //ADD SUB MENU
 
-        addSingleButton = new TextButton("Single", textButtonStyle);
+        addSingleButton = new TextButton("Single", textButtonStyles.get(textButtonStyles.size()-1));
         createAddSingleButtonFunctionality();
-        addMultipleButton = new TextButton("Multiple", textButtonStyle);
+        addMultipleButton = new TextButton("Multiple", textButtonStyles.get(textButtonStyles.size()-1));
         createAddMultipleButtonFunctionality();
 
         addTable = new Table(); //All of the sub-menus will also be tables
@@ -156,13 +191,13 @@ public class HUD extends Stage {
 
         //EDIT SUB MENU
 
-        scaleButton = new TextButton("Scale", textButtonStyle);
+        scaleButton = new TextButton("Scale", textButtonStyles.get(textButtonStyles.size()-1));
         createScaleButtonFunctionality();
-        velocityButton = new TextButton("Velocity", textButtonStyle);
-        orbitButton = new TextButton("Orbit", textButtonStyle);
-        stickyButton = new TextButton("Sticky", textButtonStyle);
-        infoButton = new TextButton("Info", textButtonStyle);
-        deleteButton = new TextButton("Delete", textButtonStyle);
+        velocityButton = new TextButton("Velocity", textButtonStyles.get(textButtonStyles.size()-1));
+        orbitButton = new TextButton("Orbit", textButtonStyles.get(textButtonStyles.size()-1));
+        stickyButton = new TextButton("Sticky", textButtonStyles.get(textButtonStyles.size()-1));
+        infoButton = new TextButton("Info", textButtonStyles.get(textButtonStyles.size()-1));
+        deleteButton = new TextButton("Delete", textButtonStyles.get(textButtonStyles.size()-1));
 
         editTable = new Table();
         editTable.setDebug(true);
@@ -189,10 +224,10 @@ public class HUD extends Stage {
 
         //VIEW SUB MENU
 
-        zoomButton = new TextButton("Zoom", textButtonStyle);
-        panButton = new TextButton("Pan", textButtonStyle);
-        resetButton = new TextButton("Reset", textButtonStyle);
-        centerButton = new TextButton("Center", textButtonStyle);
+        zoomButton = new TextButton("Zoom", textButtonStyles.get(textButtonStyles.size()-1));
+        panButton = new TextButton("Pan", textButtonStyles.get(textButtonStyles.size()-1));
+        resetButton = new TextButton("Reset", textButtonStyles.get(textButtonStyles.size()-1));
+        centerButton = new TextButton("Center", textButtonStyles.get(textButtonStyles.size()-1));
 
         viewTable = new Table();
         viewTable.setDebug(true);
@@ -217,10 +252,10 @@ public class HUD extends Stage {
 
         //SETTINGS SUB MENU
 
-        deleteAllButton = new TextButton("Delete All", textButtonStyle);
-        optionsButton = new TextButton("Options", textButtonStyle);
-        helpButton = new TextButton("Help", textButtonStyle);
-        appInfoButton = new TextButton("App Info", textButtonStyle);
+        deleteAllButton = new TextButton("Delete All", textButtonStyles.get(textButtonStyles.size()-1));
+        optionsButton = new TextButton("Options", textButtonStyles.get(textButtonStyles.size()-1));
+        helpButton = new TextButton("Help", textButtonStyles.get(textButtonStyles.size()-1));
+        appInfoButton = new TextButton("App Info", textButtonStyles.get(textButtonStyles.size()-1));
 
         settingsTable = new Table();
         settingsTable.setDebug(true);
